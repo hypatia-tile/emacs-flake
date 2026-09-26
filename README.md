@@ -24,9 +24,14 @@ almost nothing, so bundled Lisp is compiled at runtime instead. Both are
 written up in the investigation, with what was measured kept apart from what
 was only reasoned.
 
-Whether a dedicated repository is the right answer is itself an open question
-the investigation states plainly: it buys control over the source revision and
-the build flags, and it does not make the build any cheaper.
+A dedicated repository buys control over the source revision and the build
+flags, and it does not make the build any cheaper. There is now one concrete
+thing that needs that control: the emacs-plus tap's `frame-transparency`
+community patch, which exists for Emacs 31 only, targets the NS port, and
+applies to nixpkgs' Emacs 31.1 source with no fuzz allowed. It is the only route
+found to working transparency on recent macOS. Taking it costs the binary cache
+— Emacs is compiled locally from then on — and that trade has not been decided.
+The patch is not vendored here yet.
 
 ## Use
 

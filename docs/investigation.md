@@ -129,13 +129,25 @@ with `-Q`, with `~/.emacs.d` untouched:
 | Transparency | does not work |
 | xwidgets | compiled in (`xwidget-internal` → `t`) |
 
-Transparency cannot decide anything: it does not work on the Homebrew native
-build either, so it is unchanged by the move. `--with-modules` is present in
-both candidates, so a module-based route stays open.
-
 `CFBundleIdentifier` is `org.gnu.Emacs` for both the Nix and Homebrew bundles,
 which is what macSKK keys its 直接入力 list on (dotfiles-mac ADR 0029), so that
 hand-made configuration carries over.
+
+The NS build, `emacs` 31.1, was trialled the same way the next day and passed
+the same checks: window, Japanese font, xwidgets. `C-j` reaching
+`eval-print-last-sexp` there is not a defect — `*scratch*` under `-Q` is
+`lisp-interaction-mode`, where that is the standard binding in every Emacs, and
+this configuration puts ddskk on `C-x C-j` rather than on `C-j`. That macSKK
+handed the chord to Emacs at all is the outcome ADR 0029 wants.
+
+Transparency does not work on either Nix build, nor on the Homebrew one, so it
+separates none of them. It turns out not to be a property of the build at all;
+see the next section.
+
+The configuration needs nothing from the macport. `init.el` uses no `mac-*` or
+`ns-*` function; its only platform test is `(memq window-system '(mac ns x))`,
+which covers both ports. So the `mac-*` layer is not a reason to prefer the
+macport.
 
 ## Candidates, and what each costs
 
@@ -164,10 +176,18 @@ variables: tab groups, Apple events, input-source control, appearance-change
 hooks, `mac-do-applescript`, frame restacking. Native compilation, tree-sitter,
 xwidgets and dynamic modules are in both.
 
-One convergence worth noting: Emacs 31 is the version whose Flymake puts every
-backend behind `trusted-content`, which cost a day on the NixOS machine. The fix
-is already committed in the Emacs config repo (`hypatia-tile/emacs-mac`,
-4c4e1c3, closing its issue #3), so choosing 31.1 does not reopen it.
+One thing to get right, because it was first recorded wrongly: the Flymake
+behaviour that cost a day on the NixOS machine — every backend disabled as
+untrusted content — is **not** an Emacs 31 change. Upstream gates only
+`elisp-flymake-byte-compile`, and neither `flymake-always-safe` nor a
+`trusted-content` check in `flymake.el` exists anywhere in the Emacs 31.1 source
+nixpkgs builds from. Both come from nixpkgs' own `CVE-2024-53920.patch`.
+
+That matters here in both directions: choosing *any* nixpkgs Emacs brings the
+gate, and choosing a Homebrew `emacs-plus@31` would not. The escape hatch is
+already committed in the Emacs config repo (`hypatia-tile/emacs-mac`, 4c4e1c3,
+corrected in 0109a01), and it is inert where the patch is absent, so it costs
+nothing either way.
 
 ## What a dedicated repository buys, and what it does not
 
@@ -181,21 +201,61 @@ on every bump, not only when Emacs changes. A dedicated repository makes that
 cost *deliberate*; it does not remove it. Removing it would take a binary cache
 of one's own.
 
-Which means: if `emacs` 31.1 proves acceptable as it comes, the honest
-conclusion is that no override is needed and this repository is a record rather
-than a build. That is an acceptable outcome, and the reason it was created
-before the trial rather than after.
+That was written expecting the first outcome below, and the second one is what
+happened.
+
+**The override exists, and it is transparency.** The emacs-plus tap carries a
+community patch, `frame-transparency` (maintainer `aaratha`, 2025-12-23),
+described as adding "configurable frame transparency and background blur support
+on macOS using CGS APIs". It makes `alpha-background` take effect and adds
+`ns-background-blur` and `ns-alpha-elements` frame parameters. Two things about
+it decide the whole question:
+
+- its `compatibility.emacs_versions` is `["31"]`, and the directory holds only
+  `emacs-31.patch` — so the macport, at 30.2.50, cannot have it at all;
+- it patches `src/frame.c`, `src/frame.h`, `src/macfont.m`, `src/nsfns.m`,
+  `src/nsterm.h` and `src/nsterm.m` — the **NS port**, which is exactly what
+  nixpkgs' `emacs` is.
+
+It applies to nixpkgs' Emacs 31.1 source with no fuzz allowed:
+
+```
+$ patch -p1 --dry-run -F 0 --directory=<emacs-31.1-src> < frame-transparency/emacs-31.patch
+patching file 'src/frame.c'
+patching file 'src/frame.h'
+patching file 'src/macfont.m'
+patching file 'src/nsfns.m'
+patching file 'src/nsterm.h'
+patching file 'src/nsterm.m'
+exit: 0
+```
+
+None of nixpkgs' three patches (`CVE-2024-53920.patch`,
+`load-the-early-default-library-after-early-init.el.patch`,
+`native-comp-driver-options-30.patch`) touches any of those six files, so the
+order they are applied in does not matter.
+
+**Whether it renders was not tested.** Only that it applies. That is the next
+thing to settle, and it is the one claim here that is still open.
+
+So the repository is not merely a record: `emacs` 31.1 plus this patch is the
+only route that gets transparency, native compilation with a complete AOT tree,
+and a GUI that passes the trial. The price is the one named above — the override
+drops the build out of the cache, and Emacs is compiled locally from then on.
+Whether transparency is worth that is a decision, not a finding, and it has not
+been made.
 
 ## Open questions
 
-- **`emacs` 31.1 has not been trialled.** It is a download away and is the next
-  step.
+- **Does `frame-transparency` actually render?** It applies cleanly; nothing
+  beyond that is known. Building `emacs` 31.1 with it and setting
+  `alpha-background` plus `ns-background-blur` on a frame is the test.
+- **Is the local build cost acceptable?** Adopting the patch means compiling
+  Emacs, AOT pass included, on every nixpkgs bump. Unmeasured: how long that
+  actually takes on this machine.
 - **imagemagick.** Both Nix candidates pass `--without-imagemagick`, which
   emacs-plus enables. Whether anything is actually lost was not tested; the
   macport uses macOS-native image APIs, which is a reason to expect not.
-- **Transparency** is unsolved in every build tried, Homebrew and Nix alike.
-  `--with-modules` is present everywhere, so the module route
-  (window-blur / emacs-liquid-glass) is untouched but also unexplored.
 - **Permissions across rebuilds.** Both bundles are ad-hoc signed with no team
   identifier, and their codesign identifiers differ — `Emacs` for the Nix build,
   `org.gnu.Emacs` for Homebrew's. TCC grants for an ad-hoc bundle key on path
