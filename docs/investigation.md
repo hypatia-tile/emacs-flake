@@ -297,18 +297,11 @@ nix.custom.conf" is in the `determinate-nixd` binary, not in Nix.)
 Upstream Nix reads `/etc/nix/nix.conf` and nothing else at the system level.
 That file is installer-owned, and nix-darwin is kept away from it on purpose
 (`nix.enable = false`, dotfiles-mac ADR 0014), so this stays a manual step
-either way. Keeping the values in their own file and including it from
-`nix.conf` leaves one line in the installer-owned file and puts future
-additions somewhere stable:
-
-```
-# /etc/nix/nix.custom.conf
-extra-substituters = https://hypatia-emacs.cachix.org
-extra-trusted-public-keys = hypatia-emacs.cachix.org-1:01hQJcXQlX0AFv1UpAL7v9zQNhoDT0bJzoNaAzABEzQ=
-
-# appended to /etc/nix/nix.conf
-!include /etc/nix/nix.custom.conf
-```
+either way. What works is to keep the substituter and its public key in
+`/etc/nix/nix.custom.conf` and append a single `!include` line to `nix.conf`:
+that leaves almost nothing in the installer-owned file and puts later additions
+somewhere stable. The commands are in the README, and the values are written in
+one place in this repository rather than two on purpose.
 
 The daemon performs substitution, so it has to be restarted
 (`sudo launchctl kickstart -k system/org.nixos.nix-daemon`) before either file
