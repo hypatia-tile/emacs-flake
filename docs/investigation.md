@@ -235,24 +235,92 @@ None of nixpkgs' three patches (`CVE-2024-53920.patch`,
 `native-comp-driver-options-30.patch`) touches any of those six files, so the
 order they are applied in does not matter.
 
-**Whether it renders was not tested.** Only that it applies. That is the next
-thing to settle, and it is the one claim here that is still open.
+**It renders.** Built and confirmed on 2026-09-27. The build took **20m27s**
+wall clock on this machine (M-series MacBook Air, `exit 0`), and the resulting
+Emacs carries the new frame parameters where the stock one does not:
+
+| | `ns-background-blur` | `ns-alpha-elements` | `ns-alpha-all` |
+| --- | --- | --- | --- |
+| stock `emacs` 31.1 | nil | nil | nil |
+| the same plus this patch | t | t | t |
+
+(`intern-soft` on each name; the patch defines them in C, so their presence is
+evidence the patch reached the binary.) The AOT tree is complete either way,
+3137 `.eln`. A GUI frame with `alpha-background 0.7` and `ns-background-blur 30`
+in `default-frame-alist` shows transparency and blur — the first build on this
+machine to do so, after four Emacsen that did not.
 
 So the repository is not merely a record: `emacs` 31.1 plus this patch is the
-only route that gets transparency, native compilation with a complete AOT tree,
-and a GUI that passes the trial. The price is the one named above — the override
-drops the build out of the cache, and Emacs is compiled locally from then on.
-Whether transparency is worth that is a decision, not a finding, and it has not
-been made.
+only route found to transparency, and it keeps native compilation with a
+complete AOT tree and a GUI that passes the trial. The patch is vendored under
+`patches/` and `flake.nix` hands it out.
+
+The price is 20m27s per rebuild, paid whenever the pinned nixpkgs moves, not
+only when Emacs changes. That was judged worth paying, with the cost moved off
+this machine rather than accepted: the repository publishes to a binary cache of
+its own and CI does the building. What that takes is the next section.
+
+## What publishing to a cache takes here
+
+Two things about this machine are not obvious and decide the shape.
+
+**The Nix client is not trusted.**
+
+```
+$ nix store info --json
+trusted = 0
+url = daemon
+```
+
+Nix is installed by the Determinate installer, so it runs multi-user through a
+daemon, and `/etc/nix/nix.conf` carries only `build-users-group = nixbld` — no
+`trusted-users`. Substituters are a restricted setting, so a cache declared in
+`~/.config/nix/nix.conf`, on the command line with `--option`, or in a flake's
+`nixConfig` is **silently ignored** for this user. The cache has to be declared
+system-wide.
+
+Determinate owns `/etc/nix/nix.conf` and nix-darwin is kept away from it on
+purpose (`nix.enable = false`, dotfiles-mac ADR 0014), but Determinate reads
+`/etc/nix/nix.custom.conf` for exactly this — "user modification can go in
+nix.custom.conf", per the shipped binary. That file does not exist yet. Two
+lines in it are enough:
+
+```
+extra-substituters = https://<cache>.cachix.org
+extra-trusted-public-keys = <cache>.cachix.org-1:<key>
+```
+
+Declaring the one cache system-wide is the narrower grant. Adding the user to
+`trusted-users` instead would let *any* flake's `nixConfig` inject a substituter,
+which is a much larger promise for the same benefit.
+
+Because Determinate owns that directory, this is a manual machine step, not a
+declared one — it belongs with the rest of dotfiles-mac's manual setup.
+
+**`inputs.nixpkgs.follows` would defeat the cache.**
+
+If dotfiles-mac consumes this flake with `inputs.nixpkgs.follows = "nixpkgs"`,
+`pkgs.myEmacs` is built from *dotfiles-mac's* nixpkgs, while CI builds against
+*this* flake's lock. Different nixpkgs, different derivation hash, cache miss
+every time. So this flake must be consumed **without** `follows`, using its own
+pinned nixpkgs — which is also what decouples Emacs's bump cadence from the
+system's, and is how `neovim-nightly-overlay` and `emacs-overlay` are consumed
+already.
+
+The cost of that is a second nixpkgs in the closure: more evaluation, more disk,
+and potentially two versions of a shared library where one would do. Not
+measured.
 
 ## Open questions
 
-- **Does `frame-transparency` actually render?** It applies cleanly; nothing
-  beyond that is known. Building `emacs` 31.1 with it and setting
-  `alpha-background` plus `ns-background-blur` on a frame is the test.
-- **Is the local build cost acceptable?** Adopting the patch means compiling
-  Emacs, AOT pass included, on every nixpkgs bump. Unmeasured: how long that
-  actually takes on this machine.
+- **The cache does not exist yet.** No cachix cache, no CI, and
+  `/etc/nix/nix.custom.conf` unwritten. Until all three are in place, every
+  nixpkgs bump costs 20m27s on this machine.
+- **The second nixpkgs in the closure** that dropping `follows` implies was not
+  measured — neither the evaluation time nor the disk.
+- **Does the patch survive a nixpkgs bump?** It applies to 31.1 with no fuzz
+  today. When nixpkgs moves to a later Emacs the patch may not apply at all, and
+  its compatibility record names Emacs 31 only. Nothing watches for that yet.
 - **imagemagick.** Both Nix candidates pass `--without-imagemagick`, which
   emacs-plus enables. Whether anything is actually lost was not tested; the
   macport uses macOS-native image APIs, which is a reason to expect not.

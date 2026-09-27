@@ -5,11 +5,17 @@ Emacs for macOS, pinned here and offered to
 
 ## Status
 
-**Evaluation, not adopted.** The machine's Emacs still comes from Homebrew
-(`d12frosted/emacs-plus/emacs-plus@30`), and nothing in dotfiles-mac consumes
-this flake yet. The repository exists ahead of that decision on purpose: the
-reasoning and the measurements are worth keeping whether or not the switch
-happens. They are in [docs/investigation.md](docs/investigation.md).
+**Decided, not yet wired.** `flake.nix` hands out Emacs 31.1 with the
+`frame-transparency` patch, which is the only build found that gives working
+transparency and blur on recent macOS. The machine's Emacs still comes from
+Homebrew (`d12frosted/emacs-plus/emacs-plus@30`) and nothing in dotfiles-mac
+consumes this flake yet.
+
+Still missing before it can be: a binary cache and the CI that fills it, since
+the patch costs 20m27s of local build per nixpkgs bump. The reasoning and every
+measurement are in [docs/investigation.md](docs/investigation.md), including two
+non-obvious prerequisites — this machine's Nix client is not a trusted user, and
+`inputs.nixpkgs.follows` would defeat the cache.
 
 ## Why this exists
 

@@ -14,10 +14,21 @@
       systems = [ "aarch64-darwin" ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
 
-      # The one knob. This single line decides what `packages.default` and the
-      # overlay hand out, so the two cannot drift apart. See
-      # docs/investigation.md for what each candidate costs.
-      chosen = pkgs: pkgs.emacs;
+      # The one knob. This decides what `packages.default` and the overlay hand
+      # out, so the two cannot drift apart. See docs/investigation.md for what
+      # each candidate costs.
+      #
+      # The Cocoa build plus the frame-transparency patch: the only combination
+      # found that gives working transparency and blur on recent macOS. The
+      # patch exists for Emacs 31 only and targets the NS port, so the macport
+      # cannot carry it. Overriding drops the result out of cache.nixos.org --
+      # measured at 20m27s to build on an M-series MacBook Air -- which is why
+      # this repository publishes to a cache of its own.
+      chosen =
+        pkgs:
+        pkgs.emacs.overrideAttrs (o: {
+          patches = (o.patches or [ ]) ++ [ ./patches/frame-transparency-emacs-31.patch ];
+        });
     in
     {
       packages = forAllSystems (
