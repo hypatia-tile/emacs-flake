@@ -71,16 +71,35 @@ is *silently ignored*. Check with:
 nix store info --json | grep trusted     # trusted = 0 means read on
 ```
 
-On a Determinate install, `/etc/nix/nix.conf` belongs to Determinate and
-`/etc/nix/nix.custom.conf` is the seam left for local additions:
+It has to go in a file the running Nix actually reads, which is **not**
+`/etc/nix/nix.custom.conf` unless you are on Determinate Nix. That file is a
+Determinate feature; upstream Nix ignores it, silently. Check which you have:
+
+```sh
+nix --version        # "nix (Nix) 2.31.4" is upstream; Determinate says so
+```
+
+On upstream Nix the only system config is `/etc/nix/nix.conf`. Keeping local
+additions in their own file and including it leaves that file alone afterwards,
+and matches where Determinate would want them if it is ever installed:
 
 ```sh
 sudo tee /etc/nix/nix.custom.conf >/dev/null <<'EOF'
 extra-substituters = https://hypatia-emacs.cachix.org
 extra-trusted-public-keys = hypatia-emacs.cachix.org-1:01hQJcXQlX0AFv1UpAL7v9zQNhoDT0bJzoNaAzABEzQ=
 EOF
+sudo tee -a /etc/nix/nix.conf >/dev/null <<'EOF'
+!include /etc/nix/nix.custom.conf
+EOF
 sudo launchctl kickstart -k system/org.nixos.nix-daemon
 ```
+
+`!include` does not fail when the file is missing. The daemon is what
+substitutes, so it has to be restarted to read either file.
+
+**`/etc/nix/nix.conf` is installer-owned, so a Nix upgrade can overwrite it.**
+If the cache ever stops being used for no apparent reason, check that the
+`!include` line is still there before looking anywhere else.
 
 Declaring the one cache system-wide is narrower than adding yourself to
 `trusted-users`, which would let any flake's `nixConfig` name a substituter.

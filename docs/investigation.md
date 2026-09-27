@@ -279,16 +279,41 @@ daemon, and `/etc/nix/nix.conf` carries only `build-users-group = nixbld` — no
 `nixConfig` is **silently ignored** for this user. The cache has to be declared
 system-wide.
 
-Determinate owns `/etc/nix/nix.conf` and nix-darwin is kept away from it on
-purpose (`nix.enable = false`, dotfiles-mac ADR 0014), but Determinate reads
-`/etc/nix/nix.custom.conf` for exactly this — "user modification can go in
-nix.custom.conf", per the shipped binary. That file does not exist yet. Two
-lines in it are enough:
+The obvious place is wrong, and it fails silently. `/etc/nix/nix.custom.conf`
+is a **Determinate Nix** feature, and although `determinate-nixd` is installed
+here, the Nix that runs is upstream:
 
 ```
-extra-substituters = https://<cache>.cachix.org
-extra-trusted-public-keys = <cache>.cachix.org-1:<key>
+$ nix --version
+nix (Nix) 2.31.4
+$ strings $(readlink -f $(which nix)) | grep nix.custom.conf   # nothing
 ```
+
+Written there, the settings are simply ignored — `nix config show` keeps
+listing only `cache.nixos.org`, with no warning that a config file went unread.
+(This was got wrong first: the string "user modification can go in
+nix.custom.conf" is in the `determinate-nixd` binary, not in Nix.)
+
+Upstream Nix reads `/etc/nix/nix.conf` and nothing else at the system level.
+That file is installer-owned, and nix-darwin is kept away from it on purpose
+(`nix.enable = false`, dotfiles-mac ADR 0014), so this stays a manual step
+either way. Keeping the values in their own file and including it from
+`nix.conf` leaves one line in the installer-owned file and puts future
+additions somewhere stable:
+
+```
+# /etc/nix/nix.custom.conf
+extra-substituters = https://hypatia-emacs.cachix.org
+extra-trusted-public-keys = hypatia-emacs.cachix.org-1:01hQJcXQlX0AFv1UpAL7v9zQNhoDT0bJzoNaAzABEzQ=
+
+# appended to /etc/nix/nix.conf
+!include /etc/nix/nix.custom.conf
+```
+
+The daemon performs substitution, so it has to be restarted
+(`sudo launchctl kickstart -k system/org.nixos.nix-daemon`) before either file
+takes effect. And because `nix.conf` is installer-owned, a Nix upgrade can drop
+the `!include` and quietly stop the cache being used.
 
 Declaring the one cache system-wide is the narrower grant. Adding the user to
 `trusted-users` instead would let *any* flake's `nixConfig` inject a substituter,
