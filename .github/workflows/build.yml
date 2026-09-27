@@ -1,0 +1,53 @@
+# Builds what this flake hands out and pushes it to the binary cache, so no
+# machine consuming it has to compile Emacs itself. That is the whole point:
+# the frame-transparency patch drops the result out of cache.nixos.org, and
+# rebuilding it locally costs around twenty minutes per nixpkgs bump.
+#
+# Pull requests build too, deliberately. A lock bump arrives as a PR, so the
+# result is in the cache before the bump is ever merged.
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # aarch64-darwin is the only system this flake targets. macos-15 is an
+    # Apple-silicon runner; the assertion below fails loudly rather than
+    # quietly building nothing if that ever stops being true.
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: DeterminateSystems/nix-installer-action@v23
+
+      - name: Assert the runner is aarch64-darwin
+        run: |
+          system=$(nix eval --raw --impure --expr 'builtins.currentSystem')
+          echo "currentSystem = $system"
+          test "$system" = "aarch64-darwin"
+
+      - uses: cachix/cachix-action@v17
+        with:
+          name: hypatia-emacs
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      # cachix-action pushes every path built while the step is active, so the
+      # build has to come after it. --no-update-lock-file keeps the committed
+      # lock authoritative: CI publishes what the lock says, never a drift of
+      # its own.
+      - name: Build
+        run: nix build --no-update-lock-file --print-build-logs .#default
+
+      - name: Report what was built
+        run: |
+          out=$(nix path-info --no-update-lock-file .#default)
+          echo "out      = $out"
+          echo "aot .eln = $(find "$out" -name '*.eln' | wc -l | tr -d ' ')"

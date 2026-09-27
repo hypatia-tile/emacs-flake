@@ -7,15 +7,14 @@ Emacs for macOS, pinned here and offered to
 
 **Decided, not yet wired.** `flake.nix` hands out Emacs 31.1 with the
 `frame-transparency` patch, which is the only build found that gives working
-transparency and blur on recent macOS. The machine's Emacs still comes from
-Homebrew (`d12frosted/emacs-plus/emacs-plus@30`) and nothing in dotfiles-mac
-consumes this flake yet.
+transparency and blur on recent macOS. CI builds it and pushes it to
+[`hypatia-emacs.cachix.org`](https://app.cachix.org/cache/hypatia-emacs), so
+consuming it costs a download rather than the twenty minutes it takes to compile.
 
-Still missing before it can be: a binary cache and the CI that fills it, since
-the patch costs 20m27s of local build per nixpkgs bump. The reasoning and every
-measurement are in [docs/investigation.md](docs/investigation.md), including two
-non-obvious prerequisites — this machine's Nix client is not a trusted user, and
-`inputs.nixpkgs.follows` would defeat the cache.
+The machine's Emacs still comes from Homebrew
+(`d12frosted/emacs-plus/emacs-plus@30`) and nothing in dotfiles-mac consumes
+this flake yet. The reasoning and every measurement are in
+[docs/investigation.md](docs/investigation.md).
 
 ## Why this exists
 
@@ -59,22 +58,56 @@ P=$(nix build --no-link --print-out-paths .#emacs-ns)
 `--no-link` keeps a `result` symlink -- and so a GC root -- out of the working
 tree, which is what you want for a trial.
 
-How dotfiles-mac would consume it, in the same idiom it already uses for
-`neovim-nightly-overlay` and `rust-overlay`:
+## Using the cache
+
+Two things have to be true, and the first one catches people out.
+
+**The cache must be declared where the daemon reads it.** Substituters are a
+restricted setting, so unless your Nix client is a trusted user, a cache named
+in `~/.config/nix/nix.conf`, on the command line, or in this flake's `nixConfig`
+is *silently ignored*. Check with:
+
+```sh
+nix store info --json | grep trusted     # trusted = 0 means read on
+```
+
+On a Determinate install, `/etc/nix/nix.conf` belongs to Determinate and
+`/etc/nix/nix.custom.conf` is the seam left for local additions:
+
+```sh
+sudo tee /etc/nix/nix.custom.conf >/dev/null <<'EOF'
+extra-substituters = https://hypatia-emacs.cachix.org
+extra-trusted-public-keys = hypatia-emacs.cachix.org-1:01hQJcXQlX0AFv1UpAL7v9zQNhoDT0bJzoNaAzABEzQ=
+EOF
+sudo launchctl kickstart -k system/org.nixos.nix-daemon
+```
+
+Declaring the one cache system-wide is narrower than adding yourself to
+`trusted-users`, which would let any flake's `nixConfig` name a substituter.
+
+Verify the client sees it, then verify it actually hits:
+
+```sh
+nix config show | grep -E '^(substituters|trusted-public-keys)'
+nix build --dry-run .#default          # "will be fetched", not "will be built"
+```
+
+**Consume this flake with its own nixpkgs pin.** Not with
+`inputs.nixpkgs.follows`:
 
 ```nix
-inputs.emacs-flake = {
-  url = "github:hypatia-tile/emacs-flake";
-  inputs.nixpkgs.follows = "nixpkgs";
-};
+inputs.emacs-flake.url = "github:hypatia-tile/emacs-flake";
 
 # ... in the host's module
 nixpkgs.overlays = [ inputs.emacs-flake.overlays.default ];
 home.packages = [ pkgs.myEmacs ];
 ```
 
-With `follows`, this flake's own `nixpkgs` input is bypassed and `pkgs.myEmacs`
-is built from the consumer's pin. Only `overlays.default` matters on that path.
+`follows` would build `pkgs.myEmacs` from the *consumer's* nixpkgs while CI
+built against this flake's lock — a different derivation, so the cache would
+miss every time and the twenty minutes would come back. The cost of not using
+it is a second nixpkgs in the consumer's closure; the benefit, besides the
+cache, is that Emacs stops moving every time the system's pin does.
 
 ## The one knob
 

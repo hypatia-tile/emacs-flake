@@ -8,6 +8,18 @@
   # only the overlay below matters.
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
 
+  # Where CI publishes the patched Emacs. Nix honours a flake's nixConfig only
+  # for a trusted user, so on a machine whose client is untrusted -- a
+  # Determinate daemon install with no `trusted-users`, for instance -- these
+  # two lines do nothing and the same values have to be declared system-wide
+  # instead. docs/investigation.md says how.
+  nixConfig = {
+    extra-substituters = [ "https://hypatia-emacs.cachix.org" ];
+    extra-trusted-public-keys = [
+      "hypatia-emacs.cachix.org-1:01hQJcXQlX0AFv1UpAL7v9zQNhoDT0bJzoNaAzABEzQ="
+    ];
+  };
+
   outputs =
     { self, nixpkgs }:
     let
