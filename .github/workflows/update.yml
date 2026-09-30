@@ -1,0 +1,83 @@
+# Weekly flake.lock bump, built and cached before anyone is asked to merge it.
+#
+# A pull request opened with GITHUB_TOKEN does not trigger `pull_request`
+# workflows, so build.yml would never run on it and the cache would be empty
+# until after the merge. This workflow therefore does the checking and the
+# building itself, and opens the PR only when both have succeeded. A failure
+# is a red scheduled run instead of a PR -- which is the signal issue #2 asks
+# for: the day frame-transparency stops applying is the day this goes red.
+#
+# Friday, so a merged bump is in place before dotfiles-mac's own weekly lock
+# update on Saturday picks it up. Merging stays manual.
+name: update
+
+on:
+  schedule:
+    - cron: '0 21 * * 4' # Fridays 06:00 JST
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: DeterminateSystems/nix-installer-action@v23
+
+      - uses: cachix/cachix-action@v17
+        with:
+          name: hypatia-emacs
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      - name: Update flake.lock
+        id: lock
+        run: |
+          before=$(nix eval --raw .#emacs-ns.version)
+          nix flake update 2>&1 | tee "$RUNNER_TEMP/update.log"
+          if git diff --quiet flake.lock; then
+            echo "changed=false" >>"$GITHUB_OUTPUT"
+            echo "flake.lock is already current."
+            exit 0
+          fi
+          after=$(nix eval --raw .#emacs-ns.version)
+          echo "changed=true" >>"$GITHUB_OUTPUT"
+          echo "versions=$before -> $after" >>"$GITHUB_OUTPUT"
+
+      - name: Check frame-transparency applies without fuzz
+        if: steps.lock.outputs.changed == 'true'
+        run: nix build --print-build-logs .#checks.aarch64-darwin.frame-transparency
+
+      - name: Build
+        if: steps.lock.outputs.changed == 'true'
+        run: nix build --print-build-logs .#default
+
+      - name: Write the PR body
+        if: steps.lock.outputs.changed == 'true'
+        run: |
+          {
+            echo "Emacs: ${{ steps.lock.outputs.versions }}"
+            echo
+            echo "Checked and built in [the update run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID) before this PR was opened: frame-transparency applies without fuzz, and \`.#default\` is in hypatia-emacs.cachix.org. build.yml does not run on this PR, because a PR opened by GITHUB_TOKEN triggers no workflows; it runs on the merge, against a warm cache."
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/update.log"
+            echo '```'
+          } >"$RUNNER_TEMP/body.md"
+
+      - uses: peter-evans/create-pull-request@v8.1.1
+        if: steps.lock.outputs.changed == 'true'
+        with:
+          branch: update-flake-lock
+          commit-message: 'chore(deps): update flake.lock'
+          title: 'chore(deps): update flake.lock'
+          body-path: ${{ runner.temp }}/body.md
+          add-paths: flake.lock
+          delete-branch: true

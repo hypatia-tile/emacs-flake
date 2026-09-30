@@ -154,6 +154,26 @@ dotfiles-mac does not `follows` it, so a standalone `nix build` here produces
 the same path CI pushed and the machine fetched. Moving it is what moves Emacs;
 the system's nixpkgs bumps no longer do.
 
+## Keeping it current
+
+`.github/workflows/update.yml` bumps `flake.lock` every Friday. It checks the
+patch, builds `.#default` and pushes it to the cache, and only then opens a PR,
+so a merged bump is always a download. Merging stays manual. If the patch has
+stopped applying, there is no PR — the scheduled run goes red instead.
+
+"Applying" means with no fuzz. The flake check `frame-transparency` lays
+nixpkgs' own patches onto the pinned Emacs source and then this one with
+`-F 0`; the build alone would accept two lines of drift, which for six C files
+of the NS port is a patch that may compile and still be wrong. CI runs the same
+check on every push and PR, and it can be run by hand in seconds:
+
+```sh
+nix build .#checks.aarch64-darwin.frame-transparency    # or: nix flake check
+```
+
+When it fails, the place to look for a newer patch is the emacs-plus tap,
+`community/patches/frame-transparency/`.
+
 ## Conventions
 
 - Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/).
