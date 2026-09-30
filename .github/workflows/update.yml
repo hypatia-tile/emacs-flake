@@ -53,7 +53,7 @@ jobs:
 
       - name: Check frame-transparency applies without fuzz
         if: steps.lock.outputs.changed == 'true'
-        run: bin/check-patch.sh
+        run: nix build --print-build-logs .#checks.aarch64-darwin.frame-transparency
 
       - name: Build
         if: steps.lock.outputs.changed == 'true'

@@ -42,7 +42,7 @@ jobs:
       # Before the build, so a patch that has stopped applying cleanly fails
       # here, named, rather than as a fuzzed build or a log to dig through.
       - name: Check frame-transparency applies without fuzz
-        run: bin/check-patch.sh
+        run: nix build --no-update-lock-file --print-build-logs .#checks.aarch64-darwin.frame-transparency
 
       # cachix-action pushes every path built while the step is active, so the
       # build has to come after it. --no-update-lock-file keeps the committed
