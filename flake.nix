@@ -1,11 +1,9 @@
 {
   description = "Emacs for macOS, pinned and built from source with Nix";
 
-  # Tracks the same channel dotfiles-mac tracks, and flake.lock is pinned to
-  # the same revision dotfiles-mac has, so `nix build` here produces exactly
-  # what dotfiles-mac would hand the machine. When this flake is consumed with
-  # `inputs.nixpkgs.follows = "nixpkgs"`, this input is bypassed entirely and
-  # only the overlay below matters.
+  # Tracks the same channel dotfiles-mac tracks, but flake.lock is this
+  # flake's own pin: consumers must not `follows` it, or they build a
+  # derivation CI never built and miss the binary cache (see README).
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
 
 

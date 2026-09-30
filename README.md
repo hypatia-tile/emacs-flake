@@ -5,16 +5,16 @@ Emacs for macOS, pinned here and offered to
 
 ## Status
 
-**Decided, not yet wired.** `flake.nix` hands out Emacs 31.1 with the
-`frame-transparency` patch, which is the only build found that gives working
-transparency and blur on recent macOS. CI builds it and pushes it to
+**In use.** `flake.nix` hands out Emacs 31.1 with the `frame-transparency`
+patch, which is the only build found that gives working transparency and blur on
+recent macOS. CI builds it and pushes it to
 [`hypatia-emacs.cachix.org`](https://app.cachix.org/cache/hypatia-emacs), so
 consuming it costs a download rather than the twenty minutes it takes to compile.
 
-The machine's Emacs still comes from Homebrew
-(`d12frosted/emacs-plus/emacs-plus@30`) and nothing in dotfiles-mac consumes
-this flake yet. The reasoning and every measurement are in
-[docs/investigation.md](docs/investigation.md).
+dotfiles-mac has consumed it since 2026-09-27 (its ADR 0031), and `emacs-plus@30`
+has left the machine. The reasoning and every measurement are in
+[docs/investigation.md](docs/investigation.md); what is still open is in the
+[issues](https://github.com/hypatia-tile/emacs-flake/issues).
 
 ## Why this exists
 
@@ -34,14 +34,19 @@ flags, and it does not make the build any cheaper. There is now one concrete
 thing that needs that control: the emacs-plus tap's `frame-transparency`
 community patch, which exists for Emacs 31 only, targets the NS port, and
 applies to nixpkgs' Emacs 31.1 source with no fuzz allowed. It is the only route
-found to working transparency on recent macOS. Taking it costs the binary cache
-— Emacs is compiled locally from then on — and that trade has not been decided.
-The patch is not vendored here yet.
+found to working transparency on recent macOS. Taking it drops the build out of
+`cache.nixos.org`, so this repository publishes to a cache of its own and CI
+does the compiling. The patch is vendored under [patches/](patches/), with its
+licence and origin.
 
 ## Use
 
 ```sh
-# The Cocoa (NS) build -- substituted from cache.nixos.org, nothing compiled.
+# What this flake hands out: the Cocoa build plus frame-transparency.
+# Fetched from hypatia-emacs.cachix.org once the cache is declared (below).
+nix build .#default
+
+# The Cocoa (NS) build, unpatched -- substituted from cache.nixos.org.
 nix build .#emacs-ns
 
 # The macport build -- compiled locally, AOT pass included.
@@ -51,7 +56,7 @@ nix build .#emacs-macport
 To try one without touching `~/.emacs.d`:
 
 ```sh
-P=$(nix build --no-link --print-out-paths .#emacs-ns)
+P=$(nix build --no-link --print-out-paths .#default)
 "$P/Applications/Emacs.app/Contents/MacOS/Emacs" -Q
 ```
 
@@ -130,19 +135,24 @@ cache, is that Emacs stops moving every time the system's pin does.
 
 ## The one knob
 
-`flake.nix` decides what this flake hands out in a single line:
+`flake.nix` decides what this flake hands out in one place:
 
 ```nix
-chosen = pkgs: pkgs.emacs;
+chosen =
+  pkgs:
+  pkgs.emacs.overrideAttrs (o: {
+    patches = (o.patches or [ ]) ++ [ ./patches/frame-transparency-emacs-31.patch ];
+  });
 ```
 
 `packages.default` and `overlays.default` both read it, so they cannot drift
 apart. Changing which Emacs this repository stands for is that edit and nothing
 else.
 
-`flake.lock` is pinned to the same nixpkgs revision dotfiles-mac has, so a
-standalone `nix build` here produces what dotfiles-mac would actually hand the
-machine rather than something merely similar.
+`flake.lock` is this flake's own pin, and it is what the machine actually runs:
+dotfiles-mac does not `follows` it, so a standalone `nix build` here produces
+the same path CI pushed and the machine fetched. Moving it is what moves Emacs;
+the system's nixpkgs bumps no longer do.
 
 ## Conventions
 

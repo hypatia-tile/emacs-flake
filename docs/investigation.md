@@ -331,23 +331,13 @@ measured.
 
 ## Open questions
 
-- **The cache does not exist yet.** No cachix cache, no CI, and
-  `/etc/nix/nix.custom.conf` unwritten. Until all three are in place, every
-  nixpkgs bump costs 20m27s on this machine.
-- **The second nixpkgs in the closure** that dropping `follows` implies was not
-  measured — neither the evaluation time nor the disk.
-- **Does the patch survive a nixpkgs bump?** It applies to 31.1 with no fuzz
-  today. When nixpkgs moves to a later Emacs the patch may not apply at all, and
-  its compatibility record names Emacs 31 only. Nothing watches for that yet.
-- **imagemagick.** Both Nix candidates pass `--without-imagemagick`, which
-  emacs-plus enables. Whether anything is actually lost was not tested; the
-  macport uses macOS-native image APIs, which is a reason to expect not.
-- **Permissions across rebuilds.** Both bundles are ad-hoc signed with no team
-  identifier, and their codesign identifiers differ — `Emacs` for the Nix build,
-  `org.gnu.Emacs` for Homebrew's. TCC grants for an ad-hoc bundle key on path
-  and cdhash, and a store path changes on every rebuild, so Accessibility /
-  Input Monitoring / Full Disk Access grants are expected to reset each time a
-  Nix Emacs is rebuilt. This was reasoned from how the bundles are signed, not
-  observed; it may well be what "many things were broken" meant in July.
-- **Whether emacs-plus's empty AOT tree is a formula bug** worth reporting
-  upstream. Settling it needs the rebuild described above.
+Deferred work lives in this repository's
+[issues](https://github.com/hypatia-tile/emacs-flake/issues), not in a list
+here: a list in a document cannot be closed, and it does not say when it has
+gone stale ([#1](https://github.com/hypatia-tile/emacs-flake/issues/1)). The questions this section used to hold are
+[#2](https://github.com/hypatia-tile/emacs-flake/issues/2) to [#5](https://github.com/hypatia-tile/emacs-flake/issues/5).
+
+One was closed rather than moved: whether emacs-plus's empty AOT tree (Defect 2)
+is a formula bug. Emacs no longer comes from emacs-plus on this machine
+(dotfiles-mac ADR 0031), so settling it would be a report to that tap, not work
+for this repository.
