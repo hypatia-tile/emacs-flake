@@ -39,6 +39,11 @@ jobs:
           name: hypatia-emacs
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
+      # Before the build, so a patch that has stopped applying cleanly fails
+      # here, named, rather than as a fuzzed build or a log to dig through.
+      - name: Check frame-transparency applies without fuzz
+        run: bin/check-patch.sh
+
       # cachix-action pushes every path built while the step is active, so the
       # build has to come after it. --no-update-lock-file keeps the committed
       # lock authoritative: CI publishes what the lock says, never a drift of
